@@ -6,6 +6,7 @@ from app.schemas.document import (
     PaginatedDocumentVersions,
 )
 from app.schemas.node import NodeChangeRead, NodeRead, PaginatedNodes
+from app.schemas.selection import SelectionCreate, SelectionRead
 
 __all__ = [
     "BaseSchema",
@@ -16,4 +17,6 @@ __all__ = [
     "NodeRead",
     "NodeChangeRead",
     "PaginatedNodes",
+    "SelectionCreate",
+    "SelectionRead",
 ]
