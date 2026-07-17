@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
@@ -7,6 +8,7 @@ from pydantic import BaseModel, Field
 class ParsedElement(BaseModel):
     """Base class for all extracted document elements."""
 
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
     element_type: str  # "title", "heading", "paragraph", "ordered_list_item", "unordered_list_item", "table"
     content: str
     position: int = 0
