@@ -64,3 +64,33 @@ class QATraceabilityResponse(BaseModel):
     target_version_id: uuid.UUID
     results: List[QATestCaseTrace]
 
+
+class VersionInfo(BaseModel):
+    """Metadata representing a specific document version."""
+
+    id: uuid.UUID
+    version_number: int
+    commit_message: Optional[str] = None
+    created_at: datetime
+
+
+class QAWithTraceability(BaseModel):
+    """Represents a generated test case enriched with traceability status and text diffs."""
+
+    id: uuid.UUID
+    question: str
+    answer: str
+    status: str  # "Fresh", "Possibly stale", "Stale"
+    reason: str
+    diff_summary: str
+
+
+class GenerationRetrievalResponse(BaseModel):
+    """Full generation report for a selection or node query."""
+
+    selection_id: Optional[uuid.UUID] = None
+    original_version: VersionInfo
+    current_version: VersionInfo
+    staleness_status: str  # Overall status: "Fresh", "Possibly stale", or "Stale"
+    test_cases: List[QAWithTraceability]
+

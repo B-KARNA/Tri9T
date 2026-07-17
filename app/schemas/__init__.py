@@ -7,13 +7,16 @@ from app.schemas.document import (
 )
 from app.schemas.node import NodeChangeRead, NodeRead, PaginatedNodes
 from app.schemas.selection import (
+    GenerationRetrievalResponse,
     LLMFailureLogRead,
     QATestCase,
     QATestCaseList,
     QATestCaseTrace,
     QATraceabilityResponse,
+    QAWithTraceability,
     SelectionCreate,
     SelectionRead,
+    VersionInfo,
 )
 
 __all__ = [
@@ -32,4 +35,7 @@ __all__ = [
     "LLMFailureLogRead",
     "QATestCaseTrace",
     "QATraceabilityResponse",
+    "VersionInfo",
+    "QAWithTraceability",
+    "GenerationRetrievalResponse",
 ]

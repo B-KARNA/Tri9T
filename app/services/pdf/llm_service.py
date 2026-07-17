@@ -13,7 +13,7 @@ from app.core.logging import logger
 from app.models.sql.llm_failure import LLMFailureLog
 from app.models.sql.node import Node
 from app.models.sql.qa_test_case import GeneratedTestCase
-from app.models.sql.selection import Selection
+from app.models.sql.selection import Selection, SelectionNodeMapping
 from app.schemas.selection import QATestCaseList
 
 
@@ -232,3 +232,179 @@ class LLMIntegrationService:
             )
 
         return results
+
+    async def get_generation_report(
+        self,
+        selection_id: uuid.UUID,
+        db: AsyncSession,
+    ) -> Dict[str, Any]:
+        """Generates a complete status and diff summary report for all QA test cases of a selection.
+
+        Traces the changes against the current (latest) document version.
+        """
+        import difflib
+        from app.models.sql.document import DocumentVersion
+
+        # 1. Fetch selection
+        stmt = select(Selection).where(Selection.id == selection_id)
+        res = await db.execute(stmt)
+        selection = res.scalar_one_or_none()
+        if not selection:
+            raise ValueError(f"Selection {selection_id} not found.")
+
+        orig_ver = selection.version
+
+        # 2. Get current (latest) version details
+        latest_stmt = (
+            select(DocumentVersion)
+            .where(DocumentVersion.document_id == selection.document_id)
+            .order_by(DocumentVersion.version_number.desc())
+            .limit(1)
+        )
+        latest_res = await db.execute(latest_stmt)
+        latest_ver = latest_res.scalar_one()
+
+        # 3. Fetch all test cases for this selection
+        tc_stmt = select(GeneratedTestCase).where(
+            GeneratedTestCase.selection_id == selection_id
+        )
+        tc_res = await db.execute(tc_stmt)
+        test_cases = tc_res.scalars().all()
+
+        # 4. Fetch all nodes in the latest version
+        v2_stmt = select(Node).where(Node.version_id == latest_ver.id)
+        v2_res = await db.execute(v2_stmt)
+        v2_nodes = v2_res.scalars().all()
+        logical_to_v2_node = {node.logical_id: node for node in v2_nodes}
+
+        overall_status = "Fresh"
+        test_case_reports = []
+
+        for tc in test_cases:
+            # Query original Version 1 nodes
+            v1_uuids = [uuid.UUID(nid) for nid in tc.referenced_node_ids]
+            v1_stmt = select(Node).where(Node.id.in_(v1_uuids))
+            v1_res = await db.execute(v1_stmt)
+            v1_nodes = v1_res.scalars().all()
+            v1_nodes_sorted = sorted(v1_nodes, key=lambda n: n.position)
+            node_id_to_logical = {str(n.id): n.logical_id for n in v1_nodes}
+
+            # Reconstruct original text
+            v1_parts = []
+            for n in v1_nodes_sorted:
+                map_stmt = select(SelectionNodeMapping).where(
+                    SelectionNodeMapping.selection_id == selection_id,
+                    SelectionNodeMapping.node_id == n.id,
+                )
+                map_res = await db.execute(map_stmt)
+                mapping = map_res.scalar_one_or_none()
+                if (
+                    mapping
+                    and mapping.anchor_offset is not None
+                    and mapping.focus_offset is not None
+                ):
+                    s, e = (
+                        min(mapping.anchor_offset, mapping.focus_offset),
+                        max(mapping.anchor_offset, mapping.focus_offset),
+                    )
+                    v1_parts.append(n.content[s:e])
+                else:
+                    v1_parts.append(n.content)
+            original_text = "\n".join(v1_parts)
+
+            status = "Fresh"
+            reason = "All source nodes exist and content hashes match exactly."
+            diff_summary = "No changes."
+
+            # Determine corresponding text in latest version
+            v2_parts = []
+            is_stale = False
+            for nid_str in tc.referenced_node_ids:
+                lid = node_id_to_logical.get(nid_str)
+                if not lid or lid not in logical_to_v2_node:
+                    status = "Stale"
+                    reason = f"Source node with logical ID {lid or 'unknown'} was deleted in current version."
+                    diff_summary = (
+                        f"Source node (logical ID {lid or 'unknown'}) deleted."
+                    )
+                    is_stale = True
+                    break
+
+                v2_node = logical_to_v2_node[lid]
+                map_stmt = select(SelectionNodeMapping).where(
+                    SelectionNodeMapping.selection_id == selection_id,
+                    SelectionNodeMapping.node_id == uuid.UUID(nid_str),
+                )
+                map_res = await db.execute(map_stmt)
+                mapping = map_res.scalar_one_or_none()
+                if (
+                    mapping
+                    and mapping.anchor_offset is not None
+                    and mapping.focus_offset is not None
+                ):
+                    s, e = (
+                        min(mapping.anchor_offset, mapping.focus_offset),
+                        max(mapping.anchor_offset, mapping.focus_offset),
+                    )
+                    v2_parts.append(v2_node.content[s:e])
+                else:
+                    v2_parts.append(v2_node.content)
+
+            if is_stale:
+                status = "Stale"
+            else:
+                current_text = "\n".join(v2_parts)
+                # Check hash consistency across all referenced nodes
+                for nid_str in tc.referenced_node_ids:
+                    lid = node_id_to_logical[nid_str]
+                    v2_node = logical_to_v2_node[lid]
+                    orig_hash = tc.referenced_content_hashes.get(nid_str)
+                    if v2_node.content_hash != orig_hash:
+                        status = "Possibly stale"
+                        reason = f"Content of source node (logical ID {lid}) was modified in current version."
+
+                        # Generate unified diff
+                        diff = difflib.unified_diff(
+                            original_text.splitlines(),
+                            current_text.splitlines(),
+                            fromfile="Original",
+                            tofile="Current",
+                            lineterm="",
+                        )
+                        diff_summary = "\n".join(list(diff))
+                        break
+
+            # Update overall status priority: Stale > Possibly stale > Fresh
+            if status == "Stale":
+                overall_status = "Stale"
+            elif status == "Possibly stale" and overall_status != "Stale":
+                overall_status = "Possibly stale"
+
+            test_case_reports.append(
+                {
+                    "id": tc.id,
+                    "question": tc.question,
+                    "answer": tc.answer,
+                    "status": status,
+                    "reason": reason,
+                    "diff_summary": diff_summary,
+                }
+            )
+
+        return {
+            "selection_id": selection_id,
+            "original_version": {
+                "id": orig_ver.id,
+                "version_number": orig_ver.version_number,
+                "commit_message": orig_ver.commit_message,
+                "created_at": orig_ver.created_at,
+            },
+            "current_version": {
+                "id": latest_ver.id,
+                "version_number": latest_ver.version_number,
+                "commit_message": latest_ver.commit_message,
+                "created_at": latest_ver.created_at,
+            },
+            "staleness_status": overall_status,
+            "test_cases": test_case_reports,
+        }
