@@ -23,3 +23,27 @@ class SelectionRead(BaseSchema):
     name: Optional[str] = None
     node_ids: List[uuid.UUID]
     created_at: datetime
+
+
+class QATestCase(BaseModel):
+    """Represents a single generated Question and Answer test case."""
+
+    question: str
+    answer: str
+
+
+class QATestCaseList(BaseModel):
+    """Wrapper containing a list of generated QA test cases."""
+
+    test_cases: List[QATestCase]
+
+
+class LLMFailureLogRead(BaseSchema):
+    """Schema for reading logged LLM validation or API failures."""
+
+    id: uuid.UUID
+    selection_id: uuid.UUID
+    error_message: str
+    raw_response: Optional[str] = None
+    created_at: datetime
+

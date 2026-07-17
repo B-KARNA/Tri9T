@@ -1,5 +1,5 @@
 import os
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: Literal["dev", "test", "prod"] = "dev"
     PROJECT_NAME: str = "Tri9T"
     API_V1_STR: str = "/api/v1"
+    GEMINI_API_KEY: Optional[str] = Field(None, validation_alias="GEMINI_API_KEY")
 
     # SQLite / Relational Database Settings
     DATABASE_URL: str = "sqlite+aiosqlite:///./sql_app.db"

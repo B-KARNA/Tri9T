@@ -7,9 +7,11 @@ from app.api import deps
 from app.models.sql.document import DocumentVersion
 from app.models.sql.node import Node
 from app.models.sql.selection import Selection, SelectionNodeMapping
-from app.schemas.selection import SelectionCreate, SelectionRead
+from app.schemas.selection import QATestCaseList, SelectionCreate, SelectionRead
+from app.services.pdf.llm_service import LLMIntegrationService
 
 router = APIRouter()
+llm_service = LLMIntegrationService()
 
 
 @router.post("", response_model=SelectionRead, status_code=status.HTTP_201_CREATED)
@@ -113,3 +115,34 @@ async def get_selection(
         node_ids=[m.node_id for m in selection.node_mappings],
         created_at=selection.created_at,
     )
+
+
+@router.post("/{id}/generate-qa", response_model=QATestCaseList)
+async def generate_qa_from_selection(
+    id: uuid.UUID,
+    db: AsyncSession = Depends(deps.get_db),
+) -> QATestCaseList:
+    """Reconstructs selected text and generates 3-5 QA test cases using an LLM.
+
+    Saves validation failures to the audit database log and raises HTTP 500 if generation fails twice.
+    """
+    # 1. Fetch selection
+    stmt = select(Selection).where(Selection.id == id)
+    result = await db.execute(stmt)
+    selection = result.scalar_one_or_none()
+
+    if not selection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Selection with ID {id} not found.",
+        )
+
+    # 2. Run LLM generation
+    try:
+        qa_list = await llm_service.generate_qa_test_cases(selection, db)
+        return qa_list
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
