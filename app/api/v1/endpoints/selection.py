@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,7 +7,12 @@ from app.api import deps
 from app.models.sql.document import DocumentVersion
 from app.models.sql.node import Node
 from app.models.sql.selection import Selection, SelectionNodeMapping
-from app.schemas.selection import QATestCaseList, SelectionCreate, SelectionRead
+from app.schemas.selection import (
+    QATestCaseList,
+    QATraceabilityResponse,
+    SelectionCreate,
+    SelectionRead,
+)
 from app.services.pdf.llm_service import LLMIntegrationService
 
 router = APIRouter()
@@ -124,7 +129,7 @@ async def generate_qa_from_selection(
 ) -> QATestCaseList:
     """Reconstructs selected text and generates 3-5 QA test cases using an LLM.
 
-    Saves validation failures to the audit database log and raises HTTP 500 if generation fails twice.
+    Saves successful test cases to the database and validation failures to the audit log.
     """
     # 1. Fetch selection
     stmt = select(Selection).where(Selection.id == id)
@@ -140,9 +145,78 @@ async def generate_qa_from_selection(
     # 2. Run LLM generation
     try:
         qa_list = await llm_service.generate_qa_test_cases(selection, db)
+
+        # 3. Save generated test cases to database
+        from app.models.sql.qa_test_case import GeneratedTestCase
+
+        node_ids = [str(m.node_id) for m in selection.node_mappings]
+        content_hashes = {
+            str(m.node_id): m.node.content_hash
+            for m in selection.node_mappings
+        }
+
+        for tc in qa_list.test_cases:
+            db_tc = GeneratedTestCase(
+                id=uuid.uuid4(),
+                selection_id=selection.id,
+                version_id=selection.version_id,
+                question=tc.question,
+                answer=tc.answer,
+                referenced_node_ids=node_ids,
+                referenced_content_hashes=content_hashes,
+            )
+            db.add(db_tc)
+
+        await db.commit()
         return qa_list
+
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
         )
+
+
+@router.get("/{id}/qa-traceability", response_model=QATraceabilityResponse)
+async def get_qa_traceability(
+    id: uuid.UUID,
+    target_version_id: uuid.UUID = Query(
+        ..., description="The new version ID to trace against"
+    ),
+    db: AsyncSession = Depends(deps.get_db),
+) -> QATraceabilityResponse:
+    """Checks the traceability status of QA test cases for a selection against a target document version."""
+    # 1. Validate Selection existence
+    stmt = select(Selection).where(Selection.id == id)
+    result = await db.execute(stmt)
+    selection = result.scalar_one_or_none()
+
+    if not selection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Selection with ID {id} not found.",
+        )
+
+    # 2. Validate Target Version existence
+    ver_stmt = select(DocumentVersion).where(
+        DocumentVersion.id == target_version_id
+    )
+    ver_res = await db.execute(ver_stmt)
+    version = ver_res.scalar_one_or_none()
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Target document version {target_version_id} not found.",
+        )
+
+    # 3. Perform traceability validation
+    trace_results = await llm_service.check_qa_traceability(
+        selection_id=id, target_version_id=target_version_id, db=db
+    )
+
+    return QATraceabilityResponse(
+        selection_id=id,
+        target_version_id=target_version_id,
+        results=trace_results,
+    )

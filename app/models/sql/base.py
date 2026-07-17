@@ -3,6 +3,7 @@ from app.core.database import Base  # noqa
 from app.models.sql.document import Document, DocumentVersion  # noqa
 from app.models.sql.llm_failure import LLMFailureLog  # noqa
 from app.models.sql.node import Node  # noqa
+from app.models.sql.qa_test_case import GeneratedTestCase  # noqa
 from app.models.sql.selection import Selection, SelectionNodeMapping  # noqa
 
 __all__ = [
@@ -10,6 +11,7 @@ __all__ = [
     "Document",
     "DocumentVersion",
     "LLMFailureLog",
+    "GeneratedTestCase",
     "Node",
     "Selection",
     "SelectionNodeMapping",

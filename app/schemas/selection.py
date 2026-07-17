@@ -47,3 +47,20 @@ class LLMFailureLogRead(BaseSchema):
     raw_response: Optional[str] = None
     created_at: datetime
 
+
+class QATestCaseTrace(BaseModel):
+    """Represents the traceability validation state of a generated test case."""
+
+    test_case_id: uuid.UUID
+    question: str
+    status: str  # "Fresh", "Possibly stale", "Stale"
+    reason: str
+
+
+class QATraceabilityResponse(BaseModel):
+    """Contains the overall traceability validation report for a selection's QA test cases."""
+
+    selection_id: uuid.UUID
+    target_version_id: uuid.UUID
+    results: List[QATestCaseTrace]
+

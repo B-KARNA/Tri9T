@@ -10,6 +10,8 @@ from app.schemas.selection import (
     LLMFailureLogRead,
     QATestCase,
     QATestCaseList,
+    QATestCaseTrace,
+    QATraceabilityResponse,
     SelectionCreate,
     SelectionRead,
 )
@@ -28,4 +30,6 @@ __all__ = [
     "QATestCase",
     "QATestCaseList",
     "LLMFailureLogRead",
+    "QATestCaseTrace",
+    "QATraceabilityResponse",
 ]

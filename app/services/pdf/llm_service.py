@@ -5,11 +5,14 @@ import uuid
 from typing import Any, Dict, List
 
 import httpx
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.logging import logger
 from app.models.sql.llm_failure import LLMFailureLog
+from app.models.sql.node import Node
+from app.models.sql.qa_test_case import GeneratedTestCase
 from app.models.sql.selection import Selection
 from app.schemas.selection import QATestCaseList
 
@@ -164,3 +167,68 @@ class LLMIntegrationService:
         raise ValueError(
             f"Failed to generate valid QA test cases after 2 attempts. Last error: {last_error}"
         )
+
+    async def check_qa_traceability(
+        self,
+        selection_id: uuid.UUID,
+        target_version_id: uuid.UUID,
+        db: AsyncSession,
+    ) -> List[Dict[str, Any]]:
+        """Determines the traceability status of QA test cases against a new target version.
+
+        Evaluates logical identity mappings and content hash consistency.
+        """
+        # Fetch test cases associated with this selection
+        tc_stmt = select(GeneratedTestCase).where(
+            GeneratedTestCase.selection_id == selection_id
+        )
+        tc_res = await db.execute(tc_stmt)
+        test_cases = tc_res.scalars().all()
+
+        # Fetch all nodes in the target version
+        v2_stmt = select(Node).where(Node.version_id == target_version_id)
+        v2_res = await db.execute(v2_stmt)
+        v2_nodes = v2_res.scalars().all()
+        logical_to_v2_node = {node.logical_id: node for node in v2_nodes}
+
+        results = []
+        for tc in test_cases:
+            # Query logical IDs of original referenced nodes
+            v1_uuids = [uuid.UUID(nid) for nid in tc.referenced_node_ids]
+            v1_stmt = select(Node.id, Node.logical_id).where(
+                Node.id.in_(v1_uuids)
+            )
+            v1_res = await db.execute(v1_stmt)
+            node_id_to_logical = {
+                str(row.id): row.logical_id for row in v1_res.all()
+            }
+
+            status = "Fresh"
+            reason = "All source nodes exist and content hashes match exactly."
+
+            for nid_str in tc.referenced_node_ids:
+                lid = node_id_to_logical.get(nid_str)
+
+                # 1. Stale: Logical node does not exist in target version
+                if not lid or lid not in logical_to_v2_node:
+                    status = "Stale"
+                    reason = f"Source node with logical ID {lid or 'unknown'} was deleted in target version."
+                    break
+
+                # 2. Possibly Stale: Node exists but content hash changed
+                v2_node = logical_to_v2_node[lid]
+                original_hash = tc.referenced_content_hashes.get(nid_str)
+                if v2_node.content_hash != original_hash:
+                    status = "Possibly stale"
+                    reason = f"Content of source node (logical ID {lid}) was modified in target version."
+
+            results.append(
+                {
+                    "test_case_id": tc.id,
+                    "question": tc.question,
+                    "status": status,
+                    "reason": reason,
+                }
+            )
+
+        return results
