@@ -19,6 +19,7 @@ class ParsedHeading(ParsedElement):
     number_prefix: Optional[str] = None
     level: int = 1
     title: str
+    is_ambiguous: bool = False
 
 
 class ParsedTable(ParsedElement):

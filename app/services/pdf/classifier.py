@@ -56,6 +56,33 @@ class ClassifierService:
                 number_prefix=prefix,
                 level=level,
                 title=title_text,
+                is_ambiguous=False,
+            )
+        elif is_bold and font_size >= 11.0:
+            # Unnumbered heading detection
+            level = None
+            is_ambiguous = False
+
+            if font_size >= 16.0:
+                level = 1
+            elif font_size >= 12.5:
+                level = 2
+            elif font_size == 11.0:
+                level = 3
+                is_ambiguous = True  # Ambiguous because 11.0 is also standard body text size
+            else:
+                level = 2
+                is_ambiguous = True
+
+            return ParsedHeading(
+                element_type="heading",
+                content=text,
+                page_number=page_number,
+                position=position,
+                number_prefix=None,
+                level=level,
+                title=text,
+                is_ambiguous=is_ambiguous,
             )
 
         # 3. Ordered list item: Matches numbering/letter bullet, but is NOT bold
