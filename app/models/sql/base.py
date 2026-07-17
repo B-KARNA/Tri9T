@@ -1,5 +1,14 @@
 # Import all models here so that Alembic can detect them via metadata
 from app.core.database import Base  # noqa
+from app.models.sql.document import Document, DocumentVersion  # noqa
+from app.models.sql.node import Node  # noqa
+from app.models.sql.selection import Selection, SelectionNodeMapping  # noqa
 
-# Any new SQL models should be imported here to register their metadata:
-# from app.models.sql.user import User SQLModel
+__all__ = [
+    "Base",
+    "Document",
+    "DocumentVersion",
+    "Node",
+    "Selection",
+    "SelectionNodeMapping",
+]
