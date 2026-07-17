@@ -8,8 +8,8 @@
 ## Cover Page
 
 **Prepared by**:  
-Balaraj M P  
-BE Information Science and Engineering  
+B Karna  
+BE Computer Science and Engineering  
 CMR Institute of Technology  
 
 **Status**:  

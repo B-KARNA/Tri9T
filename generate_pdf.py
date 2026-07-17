@@ -111,12 +111,12 @@ def cover_page(canvas, doc):
 
     canvas.setFont("Helvetica-Bold", 14)
     canvas.setFillColor(WHITE)
-    canvas.drawCentredString(PAGE_W / 2, PAGE_H * 0.22 + 2.6 * cm, "Balaraj M P")
+    canvas.drawCentredString(PAGE_W / 2, PAGE_H * 0.22 + 2.6 * cm, "B Karna")
 
     canvas.setFont("Helvetica", 11)
     canvas.setFillColor(colors.HexColor("#94A3B8"))
     canvas.drawCentredString(PAGE_W / 2, PAGE_H * 0.22 + 1.9 * cm,
-        "BE Information Science and Engineering")
+        "BE Computer Science and Engineering")
     canvas.drawCentredString(PAGE_W / 2, PAGE_H * 0.22 + 1.3 * cm,
         "CMR Institute of Technology")
 
