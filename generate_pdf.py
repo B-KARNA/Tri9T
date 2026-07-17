@@ -143,7 +143,7 @@ def body_page(canvas, doc):
     canvas.drawString(MARGIN, PAGE_H - MARGIN * 0.5,
                       "Tri9T — Engineering Approach Document")
     canvas.drawRightString(PAGE_W - MARGIN, PAGE_H - MARGIN * 0.5,
-                           "Balaraj M P  |  CMR Institute of Technology")
+                           "B Karna  |  CMR Institute of Technology")
 
     # Bottom rule + page number
     canvas.line(MARGIN, MARGIN * 0.7,
